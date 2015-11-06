@@ -158,6 +158,7 @@ for vol in vols:
         }
         try:
             current_snap = vol.create_snapshot(description)
+            # TODO need to merge custom snap_tags from config with tags_volume
             set_resource_tags(current_snap, tags_volume)
             suc_message = 'Snapshot created with description: %s and tags: %s' % (description, str(tags_volume))
             print '     ' + suc_message

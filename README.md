@@ -21,8 +21,9 @@ Usage
 7. Decide how many versions of the snapshots you want for day/week/month and change this in config.py
 8. Change the Region and Endpoint for AWS in the config.py file
 9. Optionally specify a proxy if you need to, otherwise set it to '' in the config.py
-10. Give every Volume for which you want snapshots a Tag with a Key and a Value and put these in the config file. Default: "MakeSnapshot" and the value "True"
-11. Install the script in the cron: 
+10. In config.py, specify the tags to give to the snapshot
+11. Give every Volume for which you want snapshots a Tag with a Key and a Value and put these in the config file. Default: "autosnap" and the value "true"
+12. Install the script in the cron: 
 
 		# chmod +x makesnapshots.py
 		# crontab -e

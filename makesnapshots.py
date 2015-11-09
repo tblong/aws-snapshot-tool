@@ -27,7 +27,7 @@ from datetime import datetime
 import time
 import sys
 import logging
-from config import config
+import config
 
 
 if (len(sys.argv) < 2):
@@ -61,7 +61,7 @@ deletelist = []
 
 # Setup logging
 
-logging.basicConfig(filename=config['log_file'], filemode='w', level=logging.INFO)
+logging.basicConfig(filename=config.settings['log_file'], filemode='w', level=logging.INFO)
 start_message = 'Started taking %(period)s snapshots at %(date)s' % {
     'period': period,
     'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S %Z')
@@ -70,20 +70,20 @@ message += start_message + "\n\n"
 logging.info(start_message)
 
 # Get connection settings from config.py
-aws_access_key = config['aws_access_key']
-aws_secret_key = config['aws_secret_key']
-ec2_region_name = config['ec2_region_name']
-ec2_region_endpoint = config['ec2_region_endpoint']
-sns_arn = config.get('arn')
-proxyHost = config.get('proxyHost')
-proxyPort = config.get('proxyPort')
+aws_access_key = config.settings['aws_access_key']
+aws_secret_key = config.settings['aws_secret_key']
+ec2_region_name = config.settings['ec2_region_name']
+ec2_region_endpoint = config.settings['ec2_region_endpoint']
+sns_arn = config.settings['arn']
+proxyHost = config.settings['proxy_host']
+proxyPort = config.settigns['proxy_port']
 
 region = RegionInfo(name=ec2_region_name, endpoint=ec2_region_endpoint)
 
 # Number of snapshots to keep
-keep_week = config['keep_week']
-keep_day = config['keep_day']
-keep_month = config['keep_month']
+keep_week = config.settings['keep_week']
+keep_day = config.settings['keep_day']
+keep_month = config.settings['keep_month']
 count_success = 0
 count_total = 0
 
@@ -153,7 +153,7 @@ def set_resource_tags(resource, tags):
 
 # Get all the volumes that match the tag criteria
 print 'Finding volumes that match the requested tag ({ "tag:%(tag_name)s": "%(tag_value)s" })' % config
-vols = conn.get_all_volumes(filters={ 'tag:' + config['tag_name']: config['tag_value'] })
+vols = conn.get_all_volumes(filters={ 'tag:' + config.settings['tag_name']: config.settings['tag_value'] })
 
 for vol in vols:
     print 'found volume: %(volume)s with attachment data: %(att_data)s' % {

@@ -1,4 +1,4 @@
-config = {
+settings = {
 
     # AWS credentials for the IAM user (alternatively can be set up as environment variables)
     'aws_access_key': 'xxxxxxxx',
@@ -22,12 +22,12 @@ config = {
     'keep_month': 11,
 
     # Path to the log for this script
-    'log_file': '/logs/autosnap.log',
+    'log_file': 'logs/autosnap.log',
 
     # ARN of the SNS topic (optional)
     #'arn': 'xxxxxxxxxx',
 
     # Proxy config (optional)
-    #'proxyHost': '10.100.x.y',
-    #'proxyPort': '8080'
+    #'proxy_host': '10.100.x.y',
+    #'proxy_port': '8080'
 }

@@ -60,15 +60,16 @@ count_errors = 0
 deletelist = []
 
 # Setup logging
-logging.basicConfig(filename=config['log_file'], level=logging.INFO)
+
+logging.basicConfig(filename=config['log_file'], filemode='w', level=logging.INFO)
 start_message = 'Started taking %(period)s snapshots at %(date)s' % {
     'period': period,
-    'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S')
+    'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S %Z')
 }
 message += start_message + "\n\n"
 logging.info(start_message)
 
-# Get settings from config.py
+# Get connection settings from config.py
 aws_access_key = config['aws_access_key']
 aws_secret_key = config['aws_secret_key']
 ec2_region_name = config['ec2_region_name']
@@ -124,7 +125,7 @@ if sns_arn:
 def get_resource_tags(resource_id):
     resource_tags = {}
     if resource_id:
-        tags = conn.get_all_tags({ 'resource-id': resource_id })
+        tags = conn.get_all_tags({'resource-id': resource_id})
         for tag in tags:
             # Tags starting with 'aws:' are reserved for internal use
             if not tag.name.startswith('aws:'):
@@ -132,102 +133,119 @@ def get_resource_tags(resource_id):
     return resource_tags
 
 def set_resource_tags(resource, tags):
-    for tag_key, tag_value in tags.iteritems():
-        if tag_key not in resource.tags or resource.tags[tag_key] != tag_value:
-            print 'Tagging %(resource_id)s with [%(tag_key)s: %(tag_value)s]' % {
-                'resource_id': resource.id,
-                'tag_key': tag_key,
-                'tag_value': tag_value
-            }
-            resource.add_tag(tag_key, tag_value)
+    """
+    Adds tags to a given resource
+    
+    :type resource: boto.ec2.ec2object.TaggedEC2Object
+    :param resource: the resource to add tags to
+    
+    :type tags: dict
+    :param tags: the tags to add to the given resource
+    """
+    if resource or tags is None or not isinstance(resource, TaggedEC2Object):
+        return
+        
+    print 'Tagging %(resource_id)s with tags: %(tags)s' % {
+        'resource_id': resource.id,
+        'tags': tags
+    }
+    resource.add_tags(tags)
 
 # Get all the volumes that match the tag criteria
 print 'Finding volumes that match the requested tag ({ "tag:%(tag_name)s": "%(tag_value)s" })' % config
 vols = conn.get_all_volumes(filters={ 'tag:' + config['tag_name']: config['tag_value'] })
 
 for vol in vols:
-    try:
-        count_total += 1
-        logging.info(vol)
-        tags_volume = get_resource_tags(vol.id)
-        description = '%(period)s_snapshot %(vol_id)s_%(period)s_%(date_suffix)s by snapshot script at %(date)s' % {
-            'period': period,
-            'vol_id': vol.id,
-            'date_suffix': date_suffix,
-            'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S')
-        }
-        try:
-            current_snap = vol.create_snapshot(description)
-            # TODO need to merge custom snap_tags from config with tags_volume
-            set_resource_tags(current_snap, tags_volume)
-            suc_message = 'Snapshot created with description: %s and tags: %s' % (description, str(tags_volume))
-            print '     ' + suc_message
-            logging.info(suc_message)
-            total_creates += 1
-        except Exception, e:
-            print "Unexpected error:", sys.exc_info()[0]
-            logging.error(e)
-            pass
+    print 'found volume: %(volume)s with attachment data: %(att_data)s' % {
+        'volume': vol.id,
+        'att_data': vol.attach_data.id
+    }
+    
+    
+    
+# for vol in vols:
+#     try:
+#         count_total += 1
+#         logging.info(vol)
+#         tags_volume = get_resource_tags(vol.id)
+#         description = '%(period)s_snapshot %(vol_id)s_%(period)s_%(date_suffix)s by snapshot script at %(date)s' % {
+#             'period': period,
+#             'vol_id': vol.id,
+#             'date_suffix': date_suffix,
+#             'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S')
+#         }
+#         try:
+#             current_snap = vol.create_snapshot(description)
+#             # TODO need to merge custom snap_tags from config with tags_volume
+#             set_resource_tags(current_snap, tags_volume)
+#             suc_message = 'Snapshot created with description: %s and tags: %s' % (description, str(tags_volume))
+#             print '     ' + suc_message
+#             logging.info(suc_message)
+#             total_creates += 1
+#         except Exception, e:
+#             print "Unexpected error:", sys.exc_info()[0]
+#             logging.error(e)
+#             pass
 
-        snapshots = vol.snapshots()
-        deletelist = []
-        for snap in snapshots:
-            sndesc = snap.description
-            if (sndesc.startswith('week_snapshot') and period == 'week'):
-                deletelist.append(snap)
-            elif (sndesc.startswith('day_snapshot') and period == 'day'):
-                deletelist.append(snap)
-            elif (sndesc.startswith('month_snapshot') and period == 'month'):
-                deletelist.append(snap)
-            else:
-                logging.info('     Skipping, not added to deletelist: ' + sndesc)
+#         snapshots = vol.snapshots()
+#         deletelist = []
+#         for snap in snapshots:
+#             sndesc = snap.description
+#             if (sndesc.startswith('week_snapshot') and period == 'week'):
+#                 deletelist.append(snap)
+#             elif (sndesc.startswith('day_snapshot') and period == 'day'):
+#                 deletelist.append(snap)
+#             elif (sndesc.startswith('month_snapshot') and period == 'month'):
+#                 deletelist.append(snap)
+#             else:
+#                 logging.info('     Skipping, not added to deletelist: ' + sndesc)
 
-        for snap in deletelist:
-            logging.info(snap)
-            logging.info(snap.start_time)
+#         for snap in deletelist:
+#             logging.info(snap)
+#             logging.info(snap.start_time)
 
-        def date_compare(snap1, snap2):
-            if snap1.start_time < snap2.start_time:
-                return -1
-            elif snap1.start_time == snap2.start_time:
-                return 0
-            return 1
+#         def date_compare(snap1, snap2):
+#             if snap1.start_time < snap2.start_time:
+#                 return -1
+#             elif snap1.start_time == snap2.start_time:
+#                 return 0
+#             return 1
 
-        deletelist.sort(date_compare)
-        if period == 'day':
-            keep = keep_day
-        elif period == 'week':
-            keep = keep_week
-        elif period == 'month':
-            keep = keep_month
-        delta = len(deletelist) - keep
-        for i in range(delta):
-            del_message = '     Deleting snapshot ' + deletelist[i].description
-            logging.info(del_message)
-            deletelist[i].delete()
-            total_deletes += 1
-        time.sleep(3)
-    except:
-        print "Unexpected error:", sys.exc_info()[0]
-        logging.error('Error in processing volume with id: ' + vol.id)
-        errmsg += 'Error in processing volume with id: ' + vol.id
-        count_errors += 1
-    else:
-        count_success += 1
+#         deletelist.sort(date_compare)
+#         if period == 'day':
+#             keep = keep_day
+#         elif period == 'week':
+#             keep = keep_week
+#         elif period == 'month':
+#             keep = keep_month
+#         delta = len(deletelist) - keep
+#         for i in range(delta):
+#             del_message = '     Deleting snapshot ' + deletelist[i].description
+#             logging.info(del_message)
+#             deletelist[i].delete()
+#             total_deletes += 1
+#         time.sleep(3)
+#     except:
+#         print "Unexpected error:", sys.exc_info()[0]
+#         logging.error('Error in processing volume with id: ' + vol.id)
+#         errmsg += 'Error in processing volume with id: ' + vol.id
+#         count_errors += 1
+#     else:
+#         count_success += 1
 
-result = '\nFinished making snapshots at %(date)s with %(count_success)s snapshots of %(count_total)s possible.\n\n' % {
-    'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S'),
-    'count_success': count_success,
-    'count_total': count_total
-}
+# result = '\nFinished making snapshots at %(date)s with %(count_success)s snapshots of %(count_total)s possible.\n\n' % {
+#     'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S'),
+#     'count_success': count_success,
+#     'count_total': count_total
+# }
 
-message += result
-message += "\nTotal snapshots created: " + str(total_creates)
-message += "\nTotal snapshots errors: " + str(count_errors)
-message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n"
+# message += result
+# message += "\nTotal snapshots created: " + str(total_creates)
+# message += "\nTotal snapshots errors: " + str(count_errors)
+# message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n"
 
 print '\n' + message + '\n'
-print result
+# print result
 
 # SNS reporting
 if sns_arn:
@@ -235,5 +253,5 @@ if sns_arn:
         sns.publish(sns_arn, 'Error in processing volumes: ' + errmsg, 'Error with AWS Snapshot')
     sns.publish(sns_arn, message, 'Finished AWS snapshotting')
 
-logging.info(result)
+# logging.info(result)
 

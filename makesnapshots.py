@@ -61,29 +61,29 @@ deletelist = []
 
 # Setup logging
 
-logging.basicConfig(filename=config.settings['log_file'], filemode='w', level=logging.INFO)
+logging.basicConfig(filename=config.connection['log_file'], filemode='a', level=logging.INFO)
 start_message = 'Started taking %(period)s snapshots at %(date)s' % {
     'period': period,
-    'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S %Z')
+    'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 }
 message += start_message + "\n\n"
 logging.info(start_message)
 
 # Get connection settings from config.py
-aws_access_key = config.settings['aws_access_key']
-aws_secret_key = config.settings['aws_secret_key']
-ec2_region_name = config.settings['ec2_region_name']
-ec2_region_endpoint = config.settings['ec2_region_endpoint']
-sns_arn = config.settings['arn']
-proxyHost = config.settings['proxy_host']
-proxyPort = config.settigns['proxy_port']
+aws_access_key = config.connection['aws_access_key']
+aws_secret_key = config.connection['aws_secret_key']
+ec2_region_name = config.connection['ec2_region_name']
+ec2_region_endpoint = config.connection['ec2_region_endpoint']
+proxyHost = config.connection.get('proxy_host')
+proxyPort = config.connection.get('proxy_port')
+sns_arn = config.sns.get('topic')
 
 region = RegionInfo(name=ec2_region_name, endpoint=ec2_region_endpoint)
 
 # Number of snapshots to keep
-keep_week = config.settings['keep_week']
-keep_day = config.settings['keep_day']
-keep_month = config.settings['keep_month']
+keep_week = config.snaps['keep_week']
+keep_day = config.snaps['keep_day']
+keep_month = config.snaps['keep_month']
 count_success = 0
 count_total = 0
 
@@ -152,13 +152,16 @@ def set_resource_tags(resource, tags):
     resource.add_tags(tags)
 
 # Get all the volumes that match the tag criteria
-print 'Finding volumes that match the requested tag ({ "tag:%(tag_name)s": "%(tag_value)s" })' % config
-vols = conn.get_all_volumes(filters={ 'tag:' + config.settings['tag_name']: config.settings['tag_value'] })
+print 'Finding volumes that match the requested filter: %(filter)s' % {
+    'filter': config.volumes['filter']
+}
+vols = conn.get_all_volumes(filters=config.volumes['filter'])
 
 for vol in vols:
-    print 'found volume: %(volume)s with attachment data: %(att_data)s' % {
+    print 'found volume: %(volume)s attached to %(att_data)s with name %(instance_name)s' % {
         'volume': vol.id,
-        'att_data': vol.attach_data.id
+        'att_data': vol.attach_data.instance_id,
+        'instance_name': get_resource_tags(vol.attach_data.instance_id).get('Name')
     }
     
     
@@ -251,7 +254,7 @@ print '\n' + message + '\n'
 if sns_arn:
     if errmsg:
         sns.publish(sns_arn, 'Error in processing volumes: ' + errmsg, 'Error with AWS Snapshot')
-    sns.publish(sns_arn, message, 'Finished AWS snapshotting')
+    sns.publish(topic=sns_arn, message=message, subject=config.sns['subject'])
 
 # logging.info(result)
 

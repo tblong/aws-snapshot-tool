@@ -22,6 +22,7 @@
 
 from boto.ec2.connection import EC2Connection
 from boto.ec2.regioninfo import RegionInfo
+from boto.ec2.ec2object import TaggedEC2Object
 import boto.sns
 from datetime import datetime
 import time
@@ -29,15 +30,16 @@ import sys
 import logging
 import config
 
-# Message to return result via SNS
-message = ""
+# Messages to publish to SNS
+email_message = ""
+snap_create_message = ""
+snap_delete_message = ""
 errmsg = ""
 
 # Counters
 total_creates = 0
 total_deletes = 0
 count_errors = 0
-count_success = 0
 
 # List with snapshots to delete
 deletelist = []
@@ -50,8 +52,6 @@ ec2_region_endpoint = config.connection['ec2_region_endpoint']
 proxyHost = config.connection.get('proxy_host')
 proxyPort = config.connection.get('proxy_port')
 sns_arn = config.sns.get('topic')
-
-
 
 # Number of snapshots to keep
 keep_week = config.snaps['keep_week']
@@ -79,13 +79,13 @@ def read_args():
             quit()
     
 def setup_logging():
-    global message
+    global email_message
     logging.basicConfig(filename=config.connection['log_file'], filemode='a', level=logging.INFO)
-    start_message = 'Started taking %(period)s snapshots at %(date)s:' % {
+    start_message = 'Started taking %(period)s snapshots at %(date)s.' % {
         'period': period,
         'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     }
-    message += start_message + "\n\n"
+    email_message += start_message + "\n\n"
     logging.info(start_message)
     
 def make_connections():
@@ -148,6 +148,8 @@ def set_resource_tags(resource, tags):
     :type tags: dict
     :param tags: the tags to add to the given resource
     """
+    print type(resource)
+    print "resource type is instance: " + str(isinstance(resource, TaggedEC2Object))
     if resource or tags is None or not isinstance(resource, TaggedEC2Object):
         return
         
@@ -163,8 +165,8 @@ def find_volumes():
     
     returns: a list of volumes found
     """
-    global message
-    message += 'Finding volumes that match the requested filter: %(filter)s\n' % {
+    global email_message
+    email_message += 'Finding volumes that match the requested filter: %(filter)s\n\n' % {
         'filter': config.volumes['filter']
     }
     return conn.get_all_volumes(filters=config.volumes['filter'])
@@ -181,17 +183,18 @@ def volume_handler(vols):
     If unable to successfully make a snapshot from a volume, a volume's assocaited snapshots
     will not be called for removal based upon the assigned keep policy.
     """
-    global message
-    message += "List of snapshots created:\n"
+    global snap_create_message, snap_delete_message
+    snap_create_message = "List of snapshots created:\n"
+    snap_delete_message = "List of snapshots deleted:\n"
     
     for vol in vols:
         successful = make_snapshot(vol)
         if successful:
             remove_old_snapshots(vol)
         else:
-            error = 'Error in processing volume with id: ' + vol.id
+            error = 'Error processing volume id ' + vol.id
             logging.error(error)
-            message += error + '\n'
+            snap_create_message += error + '\n'
             
 
         
@@ -242,7 +245,7 @@ def make_snapshot(vol):
     
     return: true if successful, false othewise
     """
-    global total_creates, message
+    global total_creates, snap_create_message
     logging.info(vol)
     
     try:
@@ -259,18 +262,19 @@ def make_snapshot(vol):
             set_resource_tags(current_snap, volume_tags)
             suc_message = 'Snapshot created with snap_description: %s and tags: %s' % (snap_description, str(volume_tags))
             logging.info(suc_message)
-            message += snap_description + '\n'
+            snap_create_message += snap_description + '\n'
             total_creates += 1
             return True
         except Exception, e:
             print "Unexpected error:", sys.exc_info()[0]
             logging.error(e)
+            count_errors += 1
             return False
         
     except:
         print "Unexpected error:", sys.exc_info()[0]
         logging.error('Error in processing volume with id: ' + vol.id)
-        errmsg += 'Error in processing volume with id: ' + vol.id
+        errmsg += 'Error processing volume id ' + vol.id + '\n'
         count_errors += 1
         return False
         
@@ -278,6 +282,7 @@ def remove_old_snapshots(vol):
     """
     TODO
     """
+    global snap_delete_message, total_deletes
     pass
         
 #
@@ -286,7 +291,30 @@ def remove_old_snapshots(vol):
 read_args()
 setup_logging()
 make_connections()
-vols = find_volumes()
+volume_handler(find_volumes())
+
+# compose email message
+email_message += snap_create_message + '\n' + snap_delete_message
+
+email_message += "\nTotal snapshots created: " + str(total_creates)
+email_message += "\nTotal snapshot errors: " + str(count_errors)
+email_message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n\n"
+
+email_message += 'Finished making snapshots at %(date)s.' % {
+    'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S')
+}
+
+print email_message
+logging.info(email_message)
+
+# SNS reporting
+if sns_arn:
+    if errmsg:
+        sns.publish(topic=sns_arn, message='Error in processing volumes:\n' + errmsg, subject=config.sns['subject'] + ' / ERROR with AWS Snapshot')
+    sns.publish(topic=sns_arn, message=email_message, subject=config.sns['subject'])
+
+
+
 
 # original loop for volumes below for now
 # for vol in vols:
@@ -358,24 +386,5 @@ vols = find_volumes()
 #     else:
 #         count_success += 1
 
-# result = '\nFinished making snapshots at %(date)s with %(count_success)s snapshots.\n\n' % {
-#     'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S'),
-#     'count_success': count_success
-# }
 
-# message += result
-# message += "\nTotal snapshots created: " + str(total_creates)
-# message += "\nTotal snapshots errors: " + str(count_errors)
-# message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n"
-
-print '\n' + message + '\n'
-# print result
-
-# SNS reporting
-if sns_arn:
-    if errmsg:
-        sns.publish(sns_arn, 'Error in processing volumes: ' + errmsg, 'Error with AWS Snapshot')
-    sns.publish(topic=sns_arn, message=message, subject=config.sns['subject'])
-
-# logging.info(result)
 

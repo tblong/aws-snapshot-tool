@@ -148,15 +148,9 @@ def set_resource_tags(resource, tags):
     :type tags: dict
     :param tags: the tags to add to the given resource
     """
-    print type(resource)
-    print "resource type is instance: " + str(isinstance(resource, TaggedEC2Object))
-    if resource or tags is None or not isinstance(resource, TaggedEC2Object):
+    if None in (resource, tags) or not isinstance(resource, TaggedEC2Object):
         return
         
-    print 'Tagging %(resource_id)s with tags: %(tags)s' % {
-        'resource_id': resource.id,
-        'tags': tags
-    }
     resource.add_tags(tags)
     
 def find_volumes():
@@ -243,7 +237,7 @@ def make_snapshot(vol):
     """
     Make a snapshot for the volume provided
     
-    return: true if successful, false othewise
+    returns: true if successful, false othewise
     """
     global total_creates, snap_create_message
     logging.info(vol)

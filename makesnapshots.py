@@ -19,6 +19,7 @@
 # version 3.1: Fix a bug with the deletelist and added a pause in the volume loop
 # version 3.2: Tags of the volume are placed on the new snapshot
 # version 3.3: Merged IAM role addidtion from Github
+# version 4.0: Major restructure, improved tag handling
 
 from boto.ec2.connection import EC2Connection
 from boto.ec2.regioninfo import RegionInfo
@@ -41,9 +42,6 @@ total_creates = 0
 total_deletes = 0
 count_errors = 0
 
-# List with snapshots to delete
-deletelist = []
-
 # Get connection settings from config.py
 aws_access_key = config.connection['aws_access_key']
 aws_secret_key = config.connection['aws_secret_key']
@@ -54,25 +52,30 @@ proxyPort = config.connection.get('proxy_port')
 sns_arn = config.sns.get('topic')
 
 # Number of snapshots to keep
-keep_week = config.snaps['keep_week']
-keep_day = config.snaps['keep_day']
-keep_month = config.snaps['keep_month']
-
+KEEP_DAY = 'day'
+KEEP_WEEK = 'week'
+KEEP_MONTH = 'month'
+keep_lookup = {
+    KEEP_DAY: config.snaps['keep_day'],
+    KEEP_WEEK: config.snaps['keep_week'],
+    KEEP_MONTH: config.snaps['keep_month']
+}
 
 def read_args():
+    # TODO remove date_suffix and make more pythonic
     global period, date_suffix
     if (len(sys.argv) < 2):
         print('Please add a positional argument: day, week or month.')
         quit()
     else:
-        if sys.argv[1] == 'day':
-            period = 'day'
+        if sys.argv[1] == KEEP_DAY:
+            period = KEEP_DAY
             date_suffix = datetime.today().strftime('%a')
-        elif sys.argv[1] == 'week':
-            period = 'week'
+        elif sys.argv[1] == KEEP_WEEK:
+            period = KEEP_WEEK
             date_suffix = datetime.today().strftime('%U')
-        elif sys.argv[1] == 'month':
-            period = 'month'
+        elif sys.argv[1] == KEEP_MONTH:
+            period = KEEP_MONTH
             date_suffix = datetime.today().strftime('%b')
         else:
             print('Please use the parameter day, week or month')
@@ -127,7 +130,6 @@ def make_connections():
                 sns = boto.sns.connect_to_region(ec2_region_name)    
     
         
-
 def get_resource_tags(resource_id):
     resource_tags = {}
     if resource_id:
@@ -164,12 +166,16 @@ def find_volumes():
         'filter': config.volumes['filter']
     }
     return conn.get_all_volumes(filters=config.volumes['filter'])
-    # for vol in vols:
-    #     print 'found volume: %(volume)s attached to %(att_data)s with name %(instance_name)s' % {
-    #         'volume': vol.id,
-    #         'att_data': vol.attach_data.instance_id,
-    #         'instance_name': get_resource_tags(vol.attach_data.instance_id).get('Name')
-    #     }
+    
+def date_compare(snap1, snap2):
+    """
+    Organizes snapshots by their start_time property
+    """
+    if snap1.start_time < snap2.start_time:
+        return -1
+    elif snap1.start_time == snap2.start_time:
+        return 0
+    return 1
     
 def volume_handler(vols):
     """
@@ -189,49 +195,6 @@ def volume_handler(vols):
             error = 'Error processing volume id ' + vol.id
             logging.error(error)
             snap_create_message += error + '\n'
-            
-
-        
-        # TODO create function to handle deleting snapshots
-    
-        # snapshots = vol.snapshots()
-        # deletelist = []
-        # for snap in snapshots:
-        #     sndesc = snap.snap_description
-        #     if (sndesc.startswith('week_snapshot') and period == 'week'):
-        #         deletelist.append(snap)
-        #     elif (sndesc.startswith('day_snapshot') and period == 'day'):
-        #         deletelist.append(snap)
-        #     elif (sndesc.startswith('month_snapshot') and period == 'month'):
-        #         deletelist.append(snap)
-        #     else:
-        #         logging.info('     Skipping, not added to deletelist: ' + sndesc)
-
-        # for snap in deletelist:
-        #     logging.info(snap)
-        #     logging.info(snap.start_time)
-
-        # def date_compare(snap1, snap2):
-        #     if snap1.start_time < snap2.start_time:
-        #         return -1
-        #     elif snap1.start_time == snap2.start_time:
-        #         return 0
-        #     return 1
-
-        # deletelist.sort(date_compare)
-        # if period == 'day':
-        #     keep = keep_day
-        # elif period == 'week':
-        #     keep = keep_week
-        # elif period == 'month':
-        #     keep = keep_month
-        # delta = len(deletelist) - keep
-        # for i in range(delta):
-        #     del_message = '     Deleting snapshot ' + deletelist[i].snap_description
-        #     logging.info(del_message)
-        #     deletelist[i].delete()
-        #     total_deletes += 1
-        # time.sleep(3)
     
 def make_snapshot(vol):
     """
@@ -239,8 +202,7 @@ def make_snapshot(vol):
     
     returns: true if successful, false othewise
     """
-    global total_creates, snap_create_message
-    logging.info(vol)
+    global total_creates, snap_create_message, count_errors, errmsg
     
     try:
         volume_tags = get_resource_tags(vol.id)
@@ -255,7 +217,6 @@ def make_snapshot(vol):
             current_snap = vol.create_snapshot(snap_description)
             set_resource_tags(current_snap, volume_tags)
             suc_message = 'Snapshot created with snap_description: %s and tags: %s' % (snap_description, str(volume_tags))
-            logging.info(suc_message)
             snap_create_message += snap_description + '\n'
             total_creates += 1
             return True
@@ -274,10 +235,29 @@ def make_snapshot(vol):
         
 def remove_old_snapshots(vol):
     """
-    TODO
+    Remove snapshots for the volume provided based upon the keep policy
     """
     global snap_delete_message, total_deletes
-    pass
+    
+    snapshots = vol.snapshots()
+    deletelist = []
+    for snap in snapshots:
+        snap_desc = snap.description
+        if (snap_desc.startswith('week_snapshot') and period == KEEP_WEEK):
+            deletelist.append(snap)
+        elif (snap_desc.startswith('day_snapshot') and period == KEEP_DAY):
+            deletelist.append(snap)
+        elif (snap_desc.startswith('month_snapshot') and period == KEEP_MONTH):
+            deletelist.append(snap)
+            
+    deletelist.sort(date_compare)
+
+    delta = len(deletelist) - keep_lookup[period]
+    for i in range(delta):
+        snap = deletelist[i]
+        snap_delete_message += snap.description + ' start_time=' + snap.start_time + '\n'
+        snap.delete()
+        total_deletes += 1
         
 #
 # main entry point
@@ -299,86 +279,9 @@ email_message += 'Finished making snapshots at %(date)s.' % {
 }
 
 print email_message
-logging.info(email_message)
 
 # SNS reporting
 if sns_arn:
     if errmsg:
         sns.publish(topic=sns_arn, message='Error in processing volumes:\n' + errmsg, subject=config.sns['subject'] + ' / ERROR with AWS Snapshot')
     sns.publish(topic=sns_arn, message=email_message, subject=config.sns['subject'])
-
-
-
-
-# original loop for volumes below for now
-# for vol in vols:
-#     try:
-#         logging.info(vol)
-#         volume_tags = get_resource_tags(vol.id)
-#         snap_description = '%(period)s_snapshot %(vol_id)s_%(period)s_%(date_suffix)s by snapshot script at %(date)s' % {
-#             'period': period,
-#             'vol_id': vol.id,
-#             'date_suffix': date_suffix,
-#             'date': datetime.today().strftime('%d-%m-%Y %H:%M:%S')
-#         }
-#         try:
-#             current_snap = vol.create_snapshot(description)
-#             # TODO need to merge custom snap_tags from config with tags_volume
-#             set_resource_tags(current_snap, tags_volume)
-#             suc_message = 'Snapshot created with description: %s and tags: %s' % (description, str(tags_volume))
-#             print '     ' + suc_message
-#             logging.info(suc_message)
-#             total_creates += 1
-#         except Exception, e:
-#             print "Unexpected error:", sys.exc_info()[0]
-#             logging.error(e)
-#             pass
-
-#         snapshots = vol.snapshots()
-#         deletelist = []
-#         for snap in snapshots:
-#             sndesc = snap.description
-#             if (sndesc.startswith('week_snapshot') and period == 'week'):
-#                 deletelist.append(snap)
-#             elif (sndesc.startswith('day_snapshot') and period == 'day'):
-#                 deletelist.append(snap)
-#             elif (sndesc.startswith('month_snapshot') and period == 'month'):
-#                 deletelist.append(snap)
-#             else:
-#                 logging.info('     Skipping, not added to deletelist: ' + sndesc)
-
-#         for snap in deletelist:
-#             logging.info(snap)
-#             logging.info(snap.start_time)
-
-#         def date_compare(snap1, snap2):
-#             if snap1.start_time < snap2.start_time:
-#                 return -1
-#             elif snap1.start_time == snap2.start_time:
-#                 return 0
-#             return 1
-
-#         deletelist.sort(date_compare)
-#         if period == 'day':
-#             keep = keep_day
-#         elif period == 'week':
-#             keep = keep_week
-#         elif period == 'month':
-#             keep = keep_month
-#         delta = len(deletelist) - keep
-#         for i in range(delta):
-#             del_message = '     Deleting snapshot ' + deletelist[i].description
-#             logging.info(del_message)
-#             deletelist[i].delete()
-#             total_deletes += 1
-#         time.sleep(3)
-#     except:
-#         print "Unexpected error:", sys.exc_info()[0]
-#         logging.error('Error in processing volume with id: ' + vol.id)
-#         errmsg += 'Error in processing volume with id: ' + vol.id
-#         count_errors += 1
-#     else:
-#         count_success += 1
-
-
-

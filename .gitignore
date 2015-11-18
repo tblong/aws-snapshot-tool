@@ -30,3 +30,4 @@ pip-log.txt
 /config.py
 /iam.policy
 logs/
+.idea/

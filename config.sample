@@ -11,9 +11,6 @@ connection = {
     'ec2_region_name': 'us-east-1',
     'ec2_region_endpoint': 'ec2.us-east-1.amazonaws.com',
 
-    # Path to the log for this script
-    'log_file': 'logs/autosnap.log'
-
     # Proxy config (optional)
     #'proxy_host': '10.100.x.y',
     #'proxy_port': '8080'

@@ -223,8 +223,19 @@ def remove_old_snapshots(vol):
 
 
 def lambda_handler(event, context):
-    global email_message
-    # read_args()
+    global email_message, snap_create_message,snap_delete_message, \
+        errmsg, total_creates, total_deletes, count_errors
+
+    email_message = ""
+    snap_create_message = ""
+    snap_delete_message = ""
+    errmsg = ""
+
+    # Counters
+    total_creates = 0
+    total_deletes = 0
+    count_errors = 0
+
 
     setup_logging()
     make_connections()

@@ -82,6 +82,7 @@ def read_args():
             quit()
 
 
+
 def setup_logging():
     global email_message
     start_message = 'Started taking %(period)s snapshots at %(date)s.' % {
@@ -264,26 +265,31 @@ def remove_old_snapshots(vol):
 #
 # main entry point
 #
-read_args()
-setup_logging()
-make_connections()
-volume_handler(find_volumes())
 
-# compose email message
-email_message += snap_create_message + '\n' + snap_delete_message
 
-email_message += "\nTotal snapshots created: " + str(total_creates)
-email_message += "\nTotal snapshot errors: " + str(count_errors)
-email_message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n\n"
+def lambda_handler():
+    global email_message
+    read_args()
+    setup_logging()
+    make_connections()
+    volume_handler(find_volumes())
 
-email_message += 'Finished making snapshots at %(date)s.' % {
-    'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-}
+    # compose email message
+    email_message += snap_create_message + '\n' + snap_delete_message
 
-print email_message
+    email_message += "\nTotal snapshots created: " + str(total_creates)
+    email_message += "\nTotal snapshot errors: " + str(count_errors)
+    email_message += "\nTotal snapshots deleted: " + str(total_deletes) + "\n\n"
 
-# SNS reporting
-if sns_arn:
-    if errmsg:
-        sns.publish(topic=sns_arn, message='Error in processing volumes:\n' + errmsg, subject=config.sns['subject'] + ' / ERROR with AWS Snapshot')
-    sns.publish(topic=sns_arn, message=email_message, subject=config.sns['subject'])
+    email_message += 'Finished making snapshots at %(date)s.' % {
+        'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+
+    }
+
+    print email_message
+
+    # SNS reporting
+    if sns_arn:
+        if errmsg:
+            sns.publish(topic=sns_arn, message='Error in processing volumes:\n' + errmsg, subject=config.sns['subject'] + ' / ERROR with AWS Snapshot')
+        sns.publish(topic=sns_arn, message=email_message, subject=config.sns['subject'])

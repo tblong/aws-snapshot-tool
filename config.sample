@@ -37,9 +37,8 @@ snaps = {
 
     # Number of snapshots to keep (the older ones are going to be deleted,
     # since they cost money).
-    'keep_day': 5,
-    'keep_week': 5,
-    'keep_month': 11
+    'keep_number_snaps': #
+
 }
 
 # 

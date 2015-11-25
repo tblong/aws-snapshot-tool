@@ -51,46 +51,17 @@ proxyPort = config.connection.get('proxy_port')
 sns_arn = config.sns.get('topic')
 
 # Number of snapshots to keep
-KEEP_DAY = 'day'
-KEEP_WEEK = 'week'
-KEEP_MONTH = 'month'
+KEEP_NUM_SNAPS = 'Total snaps'
 keep_lookup = {
-    KEEP_DAY: config.snaps['keep_day'],
-    KEEP_WEEK: config.snaps['keep_week'],
-    KEEP_MONTH: config.snaps['keep_month']
+    KEEP_NUM_SNAPS: config.snaps['keep_number_snaps']
 }
-
-
-def read_args():
-    # TODO remove date_suffix and make more pythonic
-    global period, date_suffix
-    if len(sys.argv) < 2:
-        print('Please add a positional argument: day, week or month.')
-        quit()
-    else:
-        if sys.argv[1] == KEEP_DAY:
-            period = KEEP_DAY
-            date_suffix = datetime.today().strftime('%a')
-        elif sys.argv[1] == KEEP_WEEK:
-            period = KEEP_WEEK
-            date_suffix = datetime.today().strftime('%U')
-        elif sys.argv[1] == KEEP_MONTH:
-            period = KEEP_MONTH
-            date_suffix = datetime.today().strftime('%b')
-        else:
-            print('Please use the parameter day, week or month')
-            quit()
-
-
 
 def setup_logging():
     global email_message
-    start_message = 'Started taking %(period)s snapshots at %(date)s.' % {
-        'period': period,
+    start_message = 'Started taking snapshots at %(date)s.' % {
         'date': datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     }
     email_message += start_message + "\n\n"
-
 
 def make_connections():
     global conn, sns
@@ -128,8 +99,7 @@ def make_connections():
             if aws_access_key:
                 sns = boto.sns.connect_to_region(ec2_region_name, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
             else:
-                sns = boto.sns.connect_to_region(ec2_region_name)    
-    
+                sns = boto.sns.connect_to_region(ec2_region_name)
         
 def get_resource_tags(resource_id):
     resource_tags = {}
@@ -140,7 +110,6 @@ def get_resource_tags(resource_id):
             if not tag.name.startswith('aws:'):
                 resource_tags[tag.name] = tag.value
     return resource_tags
-
 
 def set_resource_tags(resource, tags):
     """
@@ -157,7 +126,6 @@ def set_resource_tags(resource, tags):
         
     resource.add_tags(tags)
 
-
 def find_volumes():
     """
     Get all the volumes that match the filter criteria in config
@@ -170,7 +138,6 @@ def find_volumes():
     }
     return conn.get_all_volumes(filters=config.volumes['filter'])
 
-
 def date_compare(snap1, snap2):
     """
     Organizes snapshots by their start_time property
@@ -180,7 +147,6 @@ def date_compare(snap1, snap2):
     elif snap1.start_time == snap2.start_time:
         return 0
     return 1
-
 
 def volume_handler(vols):
     """
@@ -200,7 +166,6 @@ def volume_handler(vols):
             error = 'Error processing volume id ' + vol.id
             snap_create_message += error + '\n'
 
-
 def make_snapshot(vol):
     """
     Make a snapshot for the volume provided
@@ -211,8 +176,7 @@ def make_snapshot(vol):
     
     try:
         volume_tags = get_resource_tags(vol.id)
-        snap_description = '%(period)s_snapshot--%(ec2_name)s--%(ec2_id)s--%(vol_id)s' % {
-            'period': period,
+        snap_description = 'snapshot--%(ec2_name)s--%(ec2_id)s--%(vol_id)s' % {
             'ec2_name': get_resource_tags(vol.attach_data.instance_id).get('Name'),
             'ec2_id': vol.attach_data.instance_id,
             'vol_id': vol.id
@@ -235,7 +199,6 @@ def make_snapshot(vol):
         count_errors += 1
         return False
 
-
 def remove_old_snapshots(vol):
     """
     Remove snapshots for the volume provided based upon the keep policy
@@ -245,17 +208,10 @@ def remove_old_snapshots(vol):
     snapshots = vol.snapshots()
     deletelist = []
     for snap in snapshots:
-        snap_desc = snap.description
-        if snap_desc.startswith('week_snapshot') and period == KEEP_WEEK:
-            deletelist.append(snap)
-        elif snap_desc.startswith('day_snapshot') and period == KEEP_DAY:
-            deletelist.append(snap)
-        elif snap_desc.startswith('month_snapshot') and period == KEEP_MONTH:
-            deletelist.append(snap)
-            
+        deletelist.append(snap)
     deletelist.sort(date_compare)
 
-    delta = len(deletelist) - keep_lookup[period]
+    delta = len(deletelist) - keep_lookup['Total snaps']
     for i in range(delta):
         snap = deletelist[i]
         snap_delete_message += snap.description + ' start_time=' + snap.start_time + '\n'
@@ -267,9 +223,10 @@ def remove_old_snapshots(vol):
 #
 
 
-def lambda_handler():
+def lambda_handler(event, context):
     global email_message
-    read_args()
+    # read_args()
+
     setup_logging()
     make_connections()
     volume_handler(find_volumes())

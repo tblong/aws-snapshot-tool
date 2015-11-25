@@ -205,7 +205,9 @@ def remove_old_snapshots(vol):
     snapshots = vol.snapshots()
     deletelist = []
     for snap in snapshots:
-        deletelist.append(snap)
+        snap_desc = snap.description
+        if snap_desc.startswith('snapshot'):
+            deletelist.append(snap)
     deletelist.sort(date_compare)
 
     delta = len(deletelist) - KEEP_NUM_SNAPS

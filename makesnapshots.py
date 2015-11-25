@@ -51,10 +51,7 @@ proxyPort = config.connection.get('proxy_port')
 sns_arn = config.sns.get('topic')
 
 # Number of snapshots to keep
-KEEP_NUM_SNAPS = 'Total snaps'
-keep_lookup = {
-    KEEP_NUM_SNAPS: config.snaps['keep_number_snaps']
-}
+KEEP_NUM_SNAPS = config.snaps['keep_number_snaps']
 
 def setup_logging():
     global email_message
@@ -211,7 +208,7 @@ def remove_old_snapshots(vol):
         deletelist.append(snap)
     deletelist.sort(date_compare)
 
-    delta = len(deletelist) - keep_lookup['Total snaps']
+    delta = len(deletelist) - KEEP_NUM_SNAPS
     for i in range(delta):
         snap = deletelist[i]
         snap_delete_message += snap.description + ' start_time=' + snap.start_time + '\n'

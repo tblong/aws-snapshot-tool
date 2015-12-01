@@ -20,7 +20,7 @@ Usage
 5. Create a SNS topic in AWS and copy the ARN into the `config.py` file
 6. Subscribe with a email address to the SNS topic to receive updates
 7. Create a snapshot user in IAM and put the key and secret in the `config.py` file
-8. Create a security policy for this user (see:  [Policy Example](https://github.com/tblong/aws-snapshot-tool/blob/aws-lambda-mods/iam.policy.sample))
+8. Create a security policy for this user (see: iam.policy.sample)
 9. Decide how many versions of the snapshots you want and change this in the `config.py` file
 10. Change the Region and Endpoint for AWS in the `config.py` file
 11. Optionally specify a proxy if needed, otherwise set it to '' in the `config.py` file

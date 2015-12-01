@@ -2,14 +2,14 @@ aws-snapshot-tool
 =================
 aws-snapshot-tool is a python script for AWS Lambda to make it easy to *roll snapshot of your EBS volumes*. 
 
-Simply add a tag to each volume you want snapshots of, configure the aws-snapshot-tool `config.sample` and you are off. Based of how many snapshots that is needed to keep and scheduling that is desired for AWS Lambda to execute the AWS Lambda code, it will handle rolling snapshots on any schedule so that setting up the retention policy is simple.
+Simply assign a tag for each volume that is to have snapshots, configure the aws-snapshot-tool `config.sample` and the AWS Lambda script is ready. Based of how many snapshots that is needed to keep and scheduling that is desired for AWS Lambda to execute the AWS Lambda code, it will handle rolling snapshots on any schedule so that setting up the retention policy is simple.
 
 Features:
 - *Python based*: Leverages boto and is easy to configure and upload to AWS Lambda server
-- *Simple tag system*: Just add a tag to each of your EBS volumes you want snapshots of
+- *Simple tag system*: Just add a tag to every EBS volume that need snapshots
 - *Configure retention policy*: Configure how many snapshots you want to retain
 - *Optimized for AWS Lambda scheduling*: Allows the scheduling to be set within AWS Lambda not the `config.py` file.
-- *SNS Notifications*: aws-snapshot-tool works with Amazon SNS out of the box, so you can be notified of snapshots
+- *SNS Notifications*: aws-snapshot-tool works with Amazon SNS out of the box, so notification of snapshots is available 
 
 Usage
 ==========
@@ -24,7 +24,7 @@ Usage
 9. Decide how many versions of the snapshots you want and change this in the `config.py` file
 10. Change the Region and Endpoint for AWS in the `config.py` file
 11. Optionally specify a proxy if needed, otherwise set it to '' in the `config.py` file
-12. In the `config.py`file, specify the tags to give to the snapshot
+12. In the `config.py`file, specify the tags that are used to search Volumes and take snapshots
 13. For each Volume that is to have snapshots, give a Tag with a Key and a Value, and put this data in the `config.py` file. Default: "autosnap" and the value "true" and "Customer" and the value "Customer Name"
 14. Upon completion of configuring `config.py`, within the project folder, zip up all of the contents(`makesnapshots.py`, `config.py`, boto folder, and boto-2.38.0.dist-info folder) as one zip file
 15. Upload the zip file within the project folder to AWS Lambda

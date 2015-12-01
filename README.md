@@ -32,7 +32,7 @@ Usage
 
 Additional Notes
 =========
-The user that executes the script needs the following policies: see iam.policy.sample
-This script is compatible with Boto, not Boto3
-During step 14, the folder "boto-2.38.0.dist-info" may be a different version
+The user that executes the script needs the following policies: see iam.policy.sample<br />
+This script is compatible with Boto, not Boto3<br />
+During step 14, the folder "boto-2.38.0.dist-info" may be a different version<br />
 
